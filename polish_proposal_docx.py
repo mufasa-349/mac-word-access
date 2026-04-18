@@ -30,6 +30,18 @@ SHORT_ABSTRACT = (
     "space for geospatial uncertainty that can later feed stress-aware decision support."
 )
 
+# align birleşiminde LaTeX kalıntısı ve cümle kopukluğu oluşabiliyor; Word’de düzgün görünen metin
+ENERGY_CARBON_COMPARISON_PARA = (
+    "Energy consumption estimate: A typical session on a laptop is expected to be CPU-light and short. "
+    "Assuming an average draw of 30 W for 10 minutes of active analysis (10 min = 1/6 h), the electrical energy is "
+    "E ≈ 30 W × (1/6) h ≈ 5 Wh = 0.005 kWh. "
+    "Carbon footprint (kg CO₂ eq): Using a conservative grid intensity of 0.4 kg CO₂ per kWh, the operational footprint "
+    "per session is approximately (0.4 kg CO₂/kWh) × (0.005 kWh) ≈ 0.002 kg CO₂ eq. "
+    "Comparison to a conventional alternative: A “blue-dot only” or single-point map has similar compute cost but can "
+    "increase downstream costs (time, risk, rework) by encouraging overconfident interpretation. "
+    "Our approach aims to reduce decision error without increasing operational energy meaningfully."
+)
+
 # Şablondaki ana/alt başlık satırları (Normal stil, tamamı kalın)
 _BOLD_PARA_INDICES = frozenset(
     {
@@ -175,6 +187,7 @@ def main() -> None:
     doc = Document(str(DOC_PATH))
 
     doc.paragraphs[29].text = SHORT_ABSTRACT
+    doc.paragraphs[69].text = ENERGY_CARBON_COMPARISON_PARA
 
     # Şablon talimatları → boş veya öz metin (paragraf sayısı korunur)
     doc.paragraphs[24].text = ""
