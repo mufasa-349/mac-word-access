@@ -1,0 +1,237 @@
+% !TeX program = xelatex
+% !TeX root = draft_proposal.tex
+% Calibri requires XeLaTeX or LuaLaTeX + system font (e.g. Microsoft Office / Windows fonts on macOS).
+\documentclass[12pt,a4paper]{article}
+
+% Font note:
+% - This document is meant to compile reliably on systems without MS Office fonts.
+% - XeLaTeX handles Unicode (e.g., Ö, Ş) without extra inputenc settings.
+
+\usepackage[margin=1in]{geometry}
+\usepackage{setspace}
+\usepackage{enumitem}
+\usepackage{amsmath}
+\usepackage{cite}
+\usepackage{booktabs}
+\usepackage{url}
+\usepackage{graphicx}
+\usepackage[hidelinks]{hyperref}
+
+\setstretch{1.15}
+
+\begin{document}
+
+% --- Cover page (centered; logo at bottom) ---
+\thispagestyle{empty}
+\begin{center}
+    \vspace*{1.25em}
+    {\LARGE\bfseries ENS 491 -- Graduation Project (Design)}\\[0.85em]
+    {\large\bfseries Proposal}
+
+    \vfill
+
+    {\bfseries Project Title}\\[0.55em]
+    {\normalsize AI-Driven Uncertainty-Aware Visualization for Decision Making Under Stress}
+
+    \vspace{2.25em}
+
+    {\bfseries Group Members}\\[0.55em]
+    {\normalsize Mustafa Bozyel (\#32417), Ömer Mert Özel (\#31998), Senih Kırmaç (\#32426)}
+
+    \vspace{1.35em}
+
+    {\bfseries Supervisor(s)}\\[0.55em]
+    {\normalsize Selim Balcısoy}
+
+    \vspace{1.35em}
+
+    {\bfseries Date}\\[0.55em]
+    {\normalsize April 17, 2026}
+
+    \vfill
+
+    \includegraphics[width=0.58\textwidth]{images/sabanci-logo.jpeg}
+\end{center}
+\clearpage
+
+\section{ABSTRACT}
+
+Many decision-support systems present uncertain, incomplete, or ambiguous data as if it were precise. Under stress---for example in emergency response, security monitoring, or other time-critical operations---this can encourage overconfident or unsafe decisions. The overarching graduation project targets an AI-driven approach that explicitly models uncertainty and communicates it through interactive visualizations, while remaining cognitively manageable for operators and supporting interpretability, latency, and trust constraints.
+
+Within that framing, this proposal concentrates on a concrete, research-ready slice: \textbf{visualizing uncertainty in GPS and location-based data}. Location fixes are often shown as a single point or a uniform ``blue dot,'' even though sensor noise, multipath, map-matching error, and semantic ambiguity mean that true position may lie in a region rather than at one coordinate. Our goal is not primarily to eliminate uncertainty but to \textbf{represent it honestly} through map-based encodings that users can interpret. We survey prior work on degraded-GPS navigation displays, blue-dot-style glyphs, and GIS-oriented GPS uncertainty visualization \cite{ranasinghe2019visualising,burigat2011pedestrian,mckenzie2016assessing,hegarty2016where,lodha2002visualization}, and we outline design directions (e.g., probability-weighted boundaries, internal density) plus an implemented web prototype that loads Android GNSS Logger exports and compares point, heatmap, and accuracy-ring views. We also relate our trajectory-focused use case to broader issues in dense mobility visualization and GPS preprocessing \cite{Zheng2015,Sobral2019,Fadloun2022,Feng2021,MillardBall2019}. The expected outcome is a clearer design space for uncertainty-aware geospatial interfaces that can later be integrated into stress-aware decision-support scenarios.
+
+\section{INTRODUCTION}
+
+\subsection*{Background and problem}
+
+The official project theme is \textit{AI-Driven Uncertainty-Aware Visualization for Decision Making Under Stress}. Software frequently masks uncertainty, which is especially risky when operators must act quickly. Stakeholders include end users, system designers, and safety authorities; constraints include interpretability, latency, and trust.
+
+We scope the \textbf{first major technical track} to \textbf{GPS and location uncertainty visualization}: how to show that a reported position is a distribution or region, not a fact at a pixel. Example: a transaction may geolocate to a mall while the true place is one of many indoor venues; a GPS fix may be drawn as one coordinate while the device could lie anywhere inside an error ellipse. Our guiding question is: how can uncertainty in GPS and location data be visualized in a way that is honest, interpretable, and useful for decision-making?
+
+Location uncertainty arises from sensor noise, signal loss, multipath in urban canyons, latency, map-matching and aggregation errors, and model-based inference. We distinguish positional, semantic, model, and temporal uncertainty categories to structure the design space.
+
+\subsection*{Literature survey and limitations of prior work}
+
+\textbf{Navigation under degraded GPS.} Ranasinghe et al.\ evaluated novel uncertainty visualizations for pedestrian navigation in the field; landmark-oriented designs helped users judge true location under poor GPS \cite{ranasinghe2019visualising}. Burigat and Chittaro compared circular uncertainty regions and street-based encodings; coloring streets reduced workload and was rated helpful \cite{burigat2011pedestrian}. These studies show that \textbf{encoding choice changes performance} but often focus on specific navigation tasks rather than general decision dashboards.
+
+\textbf{Blue-dot and judgment tasks.} McKenzie et al.\ compared uniform circles, Gaussian fades, and centroid dots for positional uncertainty judgments; uniform circles yielded faster, distribution-consistent judgments in their setting \cite{mckenzie2016assessing}. Hegarty et al.\ showed that users combine uncertain cues in task-dependent ways \cite{hegarty2016where}. \textbf{Shortcoming:} uniform disks do not communicate \emph{where} probability mass is higher inside the disk---a gap our proposed boundary- and interior-density ideas target.
+
+\textbf{GIS and trajectories.} Lodha et al.\ modeled horizontal, speed, and direction error for moving GPS objects and visualized diffused representations over imagery \cite{lodha2002visualization}. Broader trajectory and mobility literature emphasizes preprocessing (filtering, segmentation, map matching), clutter, and density visualization \cite{Zheng2015,Sobral2019,Fadloun2022,Feng2021,MillardBall2019}. \textbf{Shortcoming:} classical density maps can hide individual structure; planar KDE may misrepresent network-constrained motion.
+
+\textbf{Commercial products.} Consumer maps use proprietary uncertainty metaphors; details are not open for replication. Our work emphasizes \textbf{transparent, research-grade} encodings we can evaluate and publish.
+
+\subsection*{Patents}
+
+We have not identified a specific patent that blocks our \textbf{research prototype} on uncertainty visualization for logged GNSS data. Commercial map and device vendors hold broad portfolios; we avoid copying protected assets and rely on published methods and our own implementations. A formal freedom-to-operate review can be added if the work moves toward a product.
+
+\subsection*{Motivation}
+
+Making uncertainty visible supports more realistic trust calibration, aligns with human-centered AI goals, and provides a stepping stone toward stress-aware dashboards where misleading precision would be especially harmful. The GPS slice is tractable, data is easy to collect (e.g., GNSS Logger), and findings transfer to other uncertain spatial evidence.
+
+\section{PROPOSED SOLUTION AND METHODS}
+
+\subsection*{What we propose}
+
+We propose an iterative pipeline: (1) expand literature on uncertainty visualization and dense mobility; (2) specify visual encodings for GPS uncertainty (including concepts beyond the uniform blue dot); (3) implement and refine interactive prototypes (current work: a web tool with point, grid heatmap, kernel-density heatmap, and accuracy-ring modes on real \texttt{Fix} logs); (4) evaluate interpretability, cognitive load, and honesty of communication, with an eye toward later integration into broader stress-aware, AI-assisted decision support.
+
+\subsection*{Scope}
+
+\textbf{In scope:} visualization of positional uncertainty from smartphone/GNSS logs; exploratory comparison of encodings; preprocessing basics (sorting, cleaning, derived fields such as accuracy columns); relation to trajectory clutter and density visualization literature.
+
+\textbf{Out of scope (initially):} full probabilistic localization stack for production navigation; real-time emergency dispatch integration; rigorous user studies at scale (planned later); complete modeling of stress physiology---we treat stress as motivation for the \emph{importance} of honest uncertainty, while the thesis work grounds in GPS visualization.
+
+\subsection*{Why this is a ``complex problem''}
+
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{Multiple constraints:} perceptual limits, map readability, mobile latency, trust, and correctness of uncertainty communication simultaneously.
+    \item \textbf{No single obvious solution:} optimal glyphs depend on task (navigation vs.\ monitoring vs.\ forensics) \cite{hegarty2016where}.
+    \item \textbf{Research-based:} draws on HCI, visualization, GIS, and trajectory mining \cite{Zheng2015,Sobral2019,Fadloun2022}.
+    \item \textbf{Non-routine engineering:} combining map interaction, density estimation, and reported accuracy fields in one tool is integration-heavy.
+    \item \textbf{Consequences:} misleading location confidence affects safety and privacy (see Ethical Issues).
+    \item \textbf{System-level:} data ingestion, UI, evaluation, and future AI layers must align.
+\end{itemize}
+
+\subsection{Objectives/Tasks}
+
+\begin{center}
+\small
+\begin{tabular}{@{}p{0.42\textwidth}p{0.48\textwidth}@{}}
+\toprule
+\textbf{Objective / task} & \textbf{Intended result} \\
+\midrule
+Literature and design space & Synthesized requirements and encoding catalog \\
+GNSS data collection \& logs & Reproducible \texttt{Fix}-only datasets for tests \\
+Web prototype (Leaflet/D3) & Runnable comparison of visualization modes \\
+Concept designs (boundary/density) & Illustrations and design rationale \\
+Evaluation plan & Metrics (interpretability, load, trust); pilot study design \\
+Report and advisor alignment & ENS 491/492 deliverables updated each term \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+
+\subsection{Realistic Constraints}
+
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{Environmental:} Field logging has negligible environmental impact; we avoid unnecessary travel for data collection.
+    \item \textbf{Social/Privacy:} Location traces are sensitive; we use consented, locally stored logs and avoid publishing raw coordinates at identifiable resolution in public repos (see Ethics).
+    \item \textbf{Health and Safety:} Outdoor walking data collection should follow normal pedestrian safety; no hazardous materials.
+    \item \textbf{Manufacturability / deployment:} Prototype is a browser application; depends on modern browsers and JavaScript; GitHub Pages hosting is adequate for demos.
+\end{itemize}
+
+\subsection{Engineering/Scientific Standards}
+
+We align with good practice for \textbf{empirical visualization and HCI research} (transparent stimuli, documented parameters) and with \textbf{geospatial data quality} principles (metadata such as \texttt{AccuracyMeters}, honest labeling of synthetic vs.\ real data). Where map matching or road networks become central, established GIS and transportation methods apply \cite{MillardBall2019}. We do not claim compliance with a single mandatory industry code; the advisor may require additional standards (e.g., accessibility) as the project evolves.
+
+\subsection{Sustainability and Life Cycle Assessment}
+
+\noindent\textbf{Sustainability:} Open formats (text logs) aid long-term reproducibility; documentation reduces dependency on single maintainers.
+
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{Functional unit:} One complete analysis session consisting of (i) importing one GNSS Logger \texttt{Fix}-only trace (e.g., 5--30 minutes of walking/driving), (ii) rendering map-based uncertainty views (points/heatmap/accuracy rings), and (iii) generating the deviation summary versus an OSM reference polyline.
+    \item \textbf{System boundary (gate-to-gate, software-focused):} Smartphone GNSS logging (existing devices), local preprocessing in browser/JavaScript, and optional static web hosting for demos (e.g., GitHub Pages). We exclude device manufacturing and user travel beyond normal commuting/walking because they are not driven by the software itself.
+    \item \textbf{Energy consumption estimate:} A typical session on a laptop is expected to be CPU-light and short. Assuming a 30 W average laptop draw for 10 minutes of active analysis, energy use is
+    \[
+      E \approx 30~\text{W} \times \frac{10}{60}~\text{h} \approx 5~\text{Wh} = 0.005~\text{kWh}.
+    \]
+    \item \textbf{Carbon footprint (kg CO$_2$ eq):} Using a conservative grid intensity of 0.4 kg CO$_2$/kWh, the operational footprint per session is:
+    \begin{align*}
+      \text{CO}_2 &\approx 0.005~\text{kWh} \times 0.4~\frac{\text{kg CO}_2}{\text{kWh}} \\
+                 &\approx 0.002~\text{kg CO}_2 \;\; (\sim 2~\text{g}).
+    \end{align*}
+    Static hosting for demos is negligible at this scale; we primarily rely on local execution.
+    \item \textbf{Comparison to a conventional alternative:} A ``blue-dot only'' or ``single-point'' map has similar compute cost but can increase downstream costs (time, risk, rework) by encouraging overconfident interpretation. Our approach aims to reduce decision error without increasing operational energy meaningfully.
+\end{itemize}
+
+\subsection{Economic Feasibility and Life Cycle Cost Analysis}
+
+\noindent\textbf{Economic:} No dedicated hardware budget; use student devices and free/open map tiles (e.g., OpenStreetMap). Engineering cost is primarily time.
+
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{Material/component cost:} \$0 incremental hardware (smartphones/laptops already owned by students). Optional accessories (power bank, phone holder) are non-essential and can be avoided.
+    \item \textbf{Implementation cost:} The main cost driver is engineering effort. For a small team prototype, we assume on the order of 200--300 total person-hours across ENS~491/492 for coding, iteration, and reporting. This is an academic cost rather than a cash expense.
+    \item \textbf{Operational cost:} For demos, static hosting (GitHub Pages) is \$0. If a server is needed later (not required for the current prototype), a minimal cloud instance could be \$5--\$15/month.
+    \item \textbf{Maintenance and service cost:} Low for a static web prototype; periodic updates may be needed when browser APIs or libraries change (e.g., Leaflet/D3 upgrades). We mitigate this with pinned vendor assets and reproducible documentation.
+    \item \textbf{End-of-life cost:} Minimal; the system can be archived as a static repository. Data retention policies (deleting sensitive traces, keeping aggregated results) are the primary ``lifecycle'' concern.
+    \item \textbf{Cost per unit and performance-to-cost ratio:} For the functional unit (one analysis session), the marginal cash cost is effectively \$0, while the expected performance benefit is improved interpretability of location uncertainty and clearer error/deviation communication. Relative to conventional point-only displays, the value proposition is favorable because it improves decision quality without requiring additional infrastructure.
+\end{itemize}
+
+\section{RISK MANAGEMENT}
+
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{Resource risk:} If GNSS logging devices are unavailable, use simulator data or open trajectory datasets \cite{Zheng2015} for development; prioritize one reliable phone for ground truth collection.
+    \item \textbf{Expertise gap:} If advanced statistics or ML are needed, we will use coursework, advisor consultation, and documented libraries rather than ad-hoc models.
+    \item \textbf{Schedule slip:} If implementation or ethics review delays user studies, deliver a strong prototype and heuristic evaluation first; formal study moves to ENS 492.
+    \item \textbf{Plan B for visualization:} If a proposed encoding fails usability pretests, fall back to literature-supported baselines (circles, fades) \cite{mckenzie2016assessing} while iterating on one novel variant at a time.
+    \item \textbf{Hosting/build:} If GitHub Pages policies change, distribute the static HTML or containerize locally; bibliography and figures remain in-repo.
+\end{itemize}
+
+\section{PROJECT SCHEDULE}
+
+The course requests a Gantt chart. Figure~\ref{fig:ens491_gantt} shows the indicative timeline and task leaders; Table~\ref{tab:schedule} lists the same plan in tabular form. The chart can be updated as weeks shift. \textit{Delays in evaluation push final write-up; buffer weeks are reserved before advisor milestones.}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=\linewidth]{images/ens491_gantt.png}
+    \caption{Indicative Gantt chart for ENS~491 (GPS visualization track): weeks W1--W13, one leader per task.}
+    \label{fig:ens491_gantt}
+\end{figure}
+
+\begin{table}[h]
+    \centering
+    \caption{Indicative schedule. Task leader = single responsible student.}
+    \label{tab:schedule}
+    \small
+    \begin{tabular}{@{}lllp{3.2cm}@{}}
+        \toprule
+        \textbf{Task} & \textbf{Start} & \textbf{Duration} & \textbf{Leader} \\
+        \midrule
+        Literature extension & Week 1 & 3 weeks & Mustafa Bozyel \\
+        Prototype: modes \& UI polish & Week 2 & 5 weeks & Ömer Mert Özel \\
+        Design concepts (figures/docs) & Week 4 & 4 weeks & Senih Kırmaç \\
+        Pilot evaluation / heuristics & Week 8 & 4 weeks & Mustafa Bozyel \\
+        Draft report \& presentation & Week 11 & 3 weeks & Senih Kırmaç \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\noindent\textbf{Delay mitigation:} Parallel tracks (literature + coding) reduce critical-path length; weekly syncs surface blockers early.
+
+\section{ETHICAL ISSUES}
+
+\textbf{Location privacy:} GNSS trajectories can reveal home, work, and habits \cite{Zheng2015,Sobral2019}. We collect data only with explicit participant consent, minimize shared identifiers, and aggregate or blur public screenshots if needed.
+
+\textbf{Misleading precision:} A well-designed uncertainty UI could still be misused to imply scientific rigor without validation; we will document limitations and avoid overstating accuracy of visual metaphors.
+
+\textbf{AI-assisted design:} Exploratory mockups may use AI-generated ideas; these are labeled as non-final and must not infringe third-party rights.
+
+\textbf{Dual use:} Movement visualization could theoretically support surveillance; our academic focus is transparency and user understanding, not covert tracking.
+
+\noindent If future phases involve human subjects beyond informal team testing, we will follow university ethics procedures.
+
+\section{REFERENCES}
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+
+\end{document}
