@@ -10,10 +10,78 @@ import re
 from pathlib import Path
 
 from docx import Document
-from docx.shared import Pt
+from docx.oxml.ns import qn
+from docx.shared import Inches, Pt
+from docx.text.paragraph import Paragraph
 
 ROOT = Path(__file__).resolve().parent
 DOC_PATH = ROOT / "Proposal_Filled.docx"
+GANTT_PNG = ROOT / "ens491_gantt.png"
+
+# Şablondaki ana/alt başlık satırları (Normal stil, tamamı kalın)
+_BOLD_PARA_INDICES = frozenset(
+    {
+        0,
+        1,
+        7,
+        14,
+        16,
+        19,
+        28,
+        31,
+        38,
+        50,
+        52,
+        61,
+        65,
+        70,
+        81,
+        88,
+        94,
+        104,
+    }
+)
+
+
+def _clear_paragraph_children_keep_ppr(p: Paragraph) -> None:
+    el = p._element
+    for child in list(el):
+        if child.tag != qn("w:pPr"):
+            el.remove(child)
+
+
+def insert_gantt_figure(p: Paragraph, image_path: Path, caption: str, *, width_inches: float = 6.3) -> None:
+    _clear_paragraph_children_keep_ppr(p)
+    if image_path.is_file():
+        run = p.add_run()
+        run.add_picture(str(image_path), width=Inches(width_inches))
+        p.add_run("\n")
+    p.add_run(caption)
+
+
+def strip_bullets_to_normal(doc: Document) -> None:
+    """List Paragraph → Normal; numPr kaldırılır (madde işareti/sayı yok)."""
+    for p in doc.paragraphs:
+        st = p.style.name if p.style else ""
+        if not st.startswith("List"):
+            continue
+        pPr = p._element.find(qn("w:pPr"))
+        if pPr is not None:
+            num_pr = pPr.find(qn("w:numPr"))
+            if num_pr is not None:
+                pPr.remove(num_pr)
+        p.style = doc.styles["Normal"]
+
+
+def apply_template_heading_bold(doc: Document) -> None:
+    for i in _BOLD_PARA_INDICES:
+        if i >= len(doc.paragraphs):
+            continue
+        p = doc.paragraphs[i]
+        if not (p.text or "").strip():
+            continue
+        for r in p.runs:
+            r.bold = True
 
 # Sıralama: soyad (küçük harf), yıl → (parantez içi metin parçası)
 _IN = {
@@ -163,8 +231,10 @@ def main() -> None:
         "are not open for replication. Our work emphasizes transparent, research-grade encodings we can evaluate and publish."
     )
 
-    # Tüm paragraflar ve tablo hücreleri: köşeli parantez atıfları → APA
-    for p in doc.paragraphs:
+    # Köşeli parantez atıfları → APA (93: Gantt görseli var; .text silinmesin)
+    for i, p in enumerate(doc.paragraphs):
+        if i == 93:
+            continue
         p.text = _fix_block(p.text)
     for t in doc.tables:
         for row in t.rows:
@@ -172,7 +242,17 @@ def main() -> None:
                 for p in cell.paragraphs:
                     p.text = _fix_block(p.text)
 
+    strip_bullets_to_normal(doc)
+
+    insert_gantt_figure(
+        doc.paragraphs[93],
+        GANTT_PNG,
+        "Figure 1. ENS 491 draft schedule (indicative weeks, task leaders: Mustafa Bozyel, Ömer Mert Özel, Senih Kırmaç).",
+        width_inches=6.3,
+    )
+
     _calibri12(doc)
+    apply_template_heading_bold(doc)
     doc.save(str(DOC_PATH))
 
 
