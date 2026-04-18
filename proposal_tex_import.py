@@ -15,8 +15,27 @@ from typing import Iterable
 class ContentLine:
     """Tek Word paragrafı veya madde satırı."""
 
-    kind: str  # "normal" | "list" | "subheading"
+    # kind: normal | list | subheading | objectives_table
+    kind: str
     text: str
+
+
+# Word'de gerçek tablo olarak eklenecek satırlar (LaTeX'teki tablo ile aynı içerik)
+# Word'de PROJECT SCHEDULE: LaTeX'teki uzun metin yerine tek kısa paragraf
+PROJECT_SCHEDULE_INTRO_EN = (
+    "Below is an indicative weekly plan and task leadership for the ENS 491 track."
+)
+
+
+OBJECTIVES_TASK_ROWS: list[tuple[str, str]] = [
+    ("Objective / task", "Intended result"),
+    ("Literature and design space", "Synthesized requirements and encoding catalog"),
+    ("GNSS data collection & logs", "Reproducible Fix-only datasets for tests"),
+    ("Web prototype (Leaflet/D3)", "Runnable comparison of visualization modes"),
+    ("Concept designs (boundary/density)", "Illustrations and design rationale"),
+    ("Evaluation plan", "Metrics (interpretability, load, trust); pilot study design"),
+    ("Report and advisor alignment", "ENS 491/492 deliverables updated each term"),
+]
 
 
 SECTION_ORDER = [
@@ -124,8 +143,34 @@ def parse_cover(tex_path: Path) -> dict[str, str]:
     }
 
 
+def _strip_spurious_latex_commands(s: str) -> str:
+    """Metinde kalan ortam / boyut / tablo çizgisi komutlarını siler."""
+    s = re.sub(r"\\noindent\s*", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"\\begin\{center\}\s*", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"\\end\{center\}\s*", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"\\begin\{flushleft\}\s*", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"\\end\{flushleft\}\s*", "", s, flags=re.IGNORECASE)
+    for cmd in (
+        "tiny",
+        "scriptsize",
+        "footnotesize",
+        "small",
+        "normalsize",
+        "large",
+        "Large",
+        "LARGE",
+        "huge",
+        "Huge",
+    ):
+        s = re.sub(rf"\\{cmd}\s*", "", s)
+    for rule in ("toprule", "midrule", "bottomrule", "hline", "cline"):
+        s = re.sub(rf"\\{rule}\s*", "", s, flags=re.IGNORECASE)
+    return s
+
+
 def _clean_inline_latex(s: str) -> str:
     s = _strip_comments(s)
+    s = _strip_spurious_latex_commands(s)
     s = s.replace("``", '"').replace("''", '"')
     s = s.replace("---", "—").replace("--", "–")
     s = re.sub(r"\\,'", ",", s)
@@ -144,6 +189,7 @@ def _clean_inline_latex(s: str) -> str:
     s = re.sub(r"\\#", "#", s)
     # "et al.\ word" → "et al. word"
     s = re.sub(r"\.\\\s+", ". ", s)
+    s = _strip_spurious_latex_commands(s)
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
@@ -278,6 +324,9 @@ def _emit_plain_paragraphs(fragment: str, out: list[ContentLine]) -> None:
     # Aynı alt bölümde \textbf{...} ile başlayan satırları ayrı paragraflara böl
     fragment = re.sub(r"\n(?=\s*\\textbf\{)", "\n\n", fragment)
     for para in re.split(r"\n\s*\n+", fragment):
+        if para.strip() == "===OBJECTIVES_TABLE===":
+            out.append(ContentLine("objectives_table", ""))
+            continue
         para = _clean_inline_latex(para)
         if para:
             out.append(ContentLine("normal", para))
@@ -360,7 +409,27 @@ def extract_section_raw(body: str, name: str, next_name: str | None) -> str:
     return body[start:]
 
 
-def tex_section_to_content_lines(raw: str, base_dir: Path, *, is_references: bool = False) -> list[ContentLine]:
+def _replace_objectives_tasks_with_marker(raw: str) -> str:
+    """Objectives/Tasks altındaki center/tabular bloğunu gerçek Word tablosu ile değiştirilecek işaretle."""
+    pat = r"\\subsection\{Objectives/Tasks\}[\s\S]*?(?=\\subsection\{Realistic Constraints\})"
+
+    def _repl(_: re.Match[str]) -> str:
+        return "\\subsection{Objectives/Tasks}\n\n===OBJECTIVES_TABLE===\n\n"
+
+    return re.sub(pat, _repl, raw, count=1)
+
+
+def tex_section_to_content_lines(
+    raw: str,
+    base_dir: Path,
+    *,
+    section_name: str = "",
+    is_references: bool = False,
+) -> list[ContentLine]:
+    if section_name == "PROJECT SCHEDULE":
+        return [ContentLine("normal", PROJECT_SCHEDULE_INTRO_EN)]
+    if section_name == "PROPOSED SOLUTION AND METHODS":
+        raw = _replace_objectives_tasks_with_marker(raw)
     raw = _replace_figure_blocks(raw, base_dir)
     raw = _replace_table_blocks(raw)
     raw = _replace_standalone_tabular(raw)
@@ -387,11 +456,20 @@ def parse_proposal_tex(tex_path: Path) -> tuple[dict[str, str], dict[str, list[C
         nxt = SECTION_ORDER[i + 1] if i + 1 < len(SECTION_ORDER) else None
         raw = extract_section_raw(body, name, nxt)
         sections[name] = tex_section_to_content_lines(
-            raw, tex_path.parent, is_references=(name == "REFERENCES")
+            raw,
+            tex_path.parent,
+            section_name=name,
+            is_references=(name == "REFERENCES"),
         )
 
     return cover, sections
 
 
 def content_lines_to_debug(lines: Iterable[ContentLine]) -> str:
-    return "\n".join(f"{x.kind}: {x.text[:120]}..." if len(x.text) > 120 else f"{x.kind}: {x.text}" for x in lines)
+    out: list[str] = []
+    for x in lines:
+        if len(x.text) > 120:
+            out.append(f"{x.kind}: {x.text[:120]}...")
+        else:
+            out.append(f"{x.kind}: {x.text}")
+    return "\n".join(out)

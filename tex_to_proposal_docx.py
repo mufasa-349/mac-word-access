@@ -13,10 +13,13 @@ from pathlib import Path
 
 from docx import Document
 from docx.oxml import OxmlElement
+from docx.shared import Inches
 from docx.text.paragraph import Paragraph
 
+from bib_loader import resolve_reference_lines
 from edit_proposal import save_with_retry
 from proposal_tex_import import (
+    OBJECTIVES_TASK_ROWS,
     SECTION_ORDER,
     ContentLine,
     parse_proposal_tex,
@@ -24,6 +27,7 @@ from proposal_tex_import import (
 
 DEFAULT_TEMPLATE = Path(__file__).resolve().parent / "Proposal Template.docx"
 DEFAULT_TEX = Path(__file__).resolve().parent / "draft_proposal.tex"
+DEFAULT_GANTT = Path(__file__).resolve().parent / "ens491_gantt.png"
 
 
 def delete_paragraph(paragraph: Paragraph) -> None:
@@ -103,6 +107,34 @@ def apply_cover(doc: Document, cover: dict[str, str]) -> None:
             set_cover_line(para, "Date: ", cover.get("date", ""))
 
 
+def insert_objectives_table_after(
+    doc: Document,
+    anchor: Paragraph,
+    rows: list[tuple[str, str]],
+    body_style: str,
+) -> Paragraph:
+    """Objectives/Tasks için 2 sütunlu Word tablosu ekler; şablon gövdesinde anchor'dan sonra gelir."""
+    table = doc.add_table(rows=len(rows), cols=2)
+    tbl_el = table._tbl
+    body = doc.element.body
+    body.remove(tbl_el)
+    anchor._element.addnext(tbl_el)
+
+    for i, (left, right) in enumerate(rows):
+        row = table.rows[i]
+        row.cells[0].text = left
+        row.cells[1].text = right
+        if i == 0:
+            for cell in row.cells:
+                for paragraph in cell.paragraphs:
+                    for run in paragraph.runs:
+                        run.bold = True
+
+    spacer = OxmlElement("w:p")
+    tbl_el.addnext(spacer)
+    return Paragraph(spacer, anchor._parent)
+
+
 def fill_body_section(
     doc: Document,
     heading: str,
@@ -135,12 +167,47 @@ def fill_body_section(
             anchor = insert_paragraph_after(anchor, style=body_style)
             r = anchor.add_run(cl.text)
             r.bold = True
+        elif cl.kind == "objectives_table":
+            anchor = insert_objectives_table_after(
+                doc, anchor, OBJECTIVES_TASK_ROWS, body_style
+            )
         elif cl.kind == "list":
             anchor = insert_paragraph_after(anchor, style=list_style)
             anchor.add_run(cl.text)
         else:
             anchor = insert_paragraph_after(anchor, style=body_style)
             anchor.add_run(cl.text)
+
+
+def insert_gantt_in_schedule(
+    doc: Document,
+    all_headings: list[str],
+    image_path: Path,
+    *,
+    width_inches: float = 6.2,
+    caption: str | None = None,
+) -> None:
+    """PROJECT SCHEDULE bölümünün sonuna Gantt görseli ekler."""
+    heading = "PROJECT SCHEDULE"
+    hi = find_paragraph_index(doc, heading)
+    if hi < 0:
+        print("Uyarı: PROJECT SCHEDULE başlığı yok; Gantt eklenmedi.", file=sys.stderr)
+        return
+    ni = find_next_heading_index(doc, hi, all_headings)
+    last_idx = ni - 1 if ni > hi + 1 else hi
+    anchor = doc.paragraphs[last_idx]
+
+    pic_p = insert_paragraph_after(anchor, style="Normal")
+    run = pic_p.add_run()
+    if image_path.is_file():
+        run.add_picture(str(image_path), width=Inches(width_inches))
+    else:
+        pic_p.add_run(f"[Gantt görseli bulunamadı: {image_path}]")
+
+    if caption:
+        cap = insert_paragraph_after(pic_p, style="Normal")
+        r = cap.add_run(caption)
+        r.italic = True
 
 
 def main() -> int:
@@ -172,6 +239,29 @@ def main() -> int:
         action="store_true",
         help="Üzerine yazmadan önce .bak yedeği al",
     )
+    parser.add_argument(
+        "--gantt",
+        type=Path,
+        default=DEFAULT_GANTT,
+        help=f"PROJECT SCHEDULE için PNG (varsayılan: {DEFAULT_GANTT.name})",
+    )
+    parser.add_argument(
+        "--no-gantt",
+        action="store_true",
+        help="Gantt görselini ekleme",
+    )
+    parser.add_argument(
+        "--references-bib",
+        type=Path,
+        default=None,
+        help="references.bib yolu (yoksa \\bibliography{...} ile aynı adda .bib aranır)",
+    )
+    parser.add_argument(
+        "--references-bbl",
+        type=Path,
+        default=None,
+        help="pdflatex/bibtex ile üretilmiş .bbl (varsa .bib yerine tercih edilir)",
+    )
     args = parser.parse_args()
 
     tex_path = args.tex.expanduser().resolve()
@@ -187,6 +277,14 @@ def main() -> int:
 
     cover, sections = parse_proposal_tex(tex_path)
 
+    ref_lines = resolve_reference_lines(
+        tex_path,
+        bbl_path=args.references_bbl.expanduser().resolve() if args.references_bbl else None,
+        bib_path=args.references_bib.expanduser().resolve() if args.references_bib else None,
+    )
+    if ref_lines:
+        sections["REFERENCES"] = [ContentLine("normal", ln) for ln in ref_lines]
+
     doc = Document(str(template_path))
     apply_cover(doc, cover)
 
@@ -195,6 +293,15 @@ def main() -> int:
 
     for name in SECTION_ORDER:
         fill_body_section(doc, name, sections.get(name, []), all_headings)
+
+    if not args.no_gantt:
+        gantt_path = args.gantt.expanduser().resolve()
+        insert_gantt_in_schedule(
+            doc,
+            all_headings,
+            gantt_path,
+            caption="Figure: Summary Gantt chart for ENS 491 (task leaders and weeks).",
+        )
 
     if args.backup and out_path.is_file():
         bak = out_path.with_suffix(out_path.suffix + ".bak")
