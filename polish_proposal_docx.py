@@ -18,6 +18,18 @@ ROOT = Path(__file__).resolve().parent
 DOC_PATH = ROOT / "Proposal_Filled.docx"
 GANTT_PNG = ROOT / "ens491_gantt.png"
 
+# align_filled_to_template uzun öz döndürür; her polish turunda kısa öz sabitlenir
+SHORT_ABSTRACT = (
+    "Decision-support tools often present uncertain location data as if it were exact; under time pressure this can "
+    "foster overconfidence. The broader project explores AI-driven, uncertainty-aware visualization for stressful "
+    "settings; this proposal focuses on a concrete slice: communicating positional uncertainty in GPS and map "
+    "interfaces instead of a single “blue dot.” We build on prior work on degraded-GPS displays and uncertainty "
+    "glyphs (Burigat & Chittaro, 2011; McKenzie et al., 2016; Ranasinghe et al., 2019) and relate the problem to "
+    "trajectory and mobility analysis (Zheng, 2015; Sobral et al., 2019). We implement a web prototype that ingests "
+    "GNSS Logger traces and compares point, heatmap, and accuracy-ring views. The aim is a clearer, honest design "
+    "space for geospatial uncertainty that can later feed stress-aware decision support."
+)
+
 # Şablondaki ana/alt başlık satırları (Normal stil, tamamı kalın)
 _BOLD_PARA_INDICES = frozenset(
     {
@@ -161,6 +173,8 @@ Zheng, Y. (2015). Trajectory data mining: An overview. ACM Transactions on Intel
 
 def main() -> None:
     doc = Document(str(DOC_PATH))
+
+    doc.paragraphs[29].text = SHORT_ABSTRACT
 
     # Şablon talimatları → boş veya öz metin (paragraf sayısı korunur)
     doc.paragraphs[24].text = ""
